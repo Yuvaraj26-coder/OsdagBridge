@@ -1,4 +1,27 @@
-def ch7_quantities(input_dict):
+from osdagbridge.core.reports.report_theme import THEME
+from osdagbridge.core.reports.report_charts import build_material_chart
+
+
+def _material_charts_tex(input_dict, asset_dir):
+    """Figure block(s) summarising the Table 7.1 quantities (empty if no asset dir)."""
+    if not asset_dir:
+        return ""
+    res = build_material_chart(input_dict, asset_dir)
+    if not res.get("material"):
+        return ""
+    tex = (
+        "\\section*{Material Quantity Charts}\n"
+        "\\begin{figure}[H]\n\\centering\n"
+        "\\includegraphics[width=" + THEME.chart.latex_width + "]{" + res["material"] + "}\n"
+        "\\caption{Structural steel tonnage (girders, cross bracing, end diaphragms), concrete "
+        "volume and reinforcement weight, taken from Table 7.1.}\n\\end{figure}\n"
+    )
+    for n in res.get("notes", []):
+        tex += "\\noindent\\textit{\\small Note: " + n + "}\\par\n"
+    return tex
+
+
+def ch7_quantities(input_dict, asset_dir=None):
     return r"""
 \chapter{Material Take-off \& Quantity Summary}
 \label{ch:material-takeoff}
@@ -6,7 +29,7 @@ def ch7_quantities(input_dict):
 \noindent\textbf{Table 7.1  Bill of Materials (Steel, Concrete, and Reinforcement Quantities)}
 
 \begingroup
-\setlength{\tabcolsep}{3.5pt}
+\tableTight
 \begin{longtable}{|C{1.0cm}|L{3.8cm}|C{2.6cm}|C{1.8cm}|C{1.8cm}|C{1.8cm}|C{1.8cm}|}
 \hline
 \textbf{S.N.} & \textbf{Item Description} & \textbf{Volume} & \textbf{Quantity} & \textbf{Total Volume} & \textbf{Weight (MT)} & \textbf{Total Weight (MT)} \\
@@ -28,6 +51,4 @@ def ch7_quantities(input_dict):
 6 & Crash Barrier & """ + str(input_dict.get("crash_barrier_vol_formula", "N.A.")) + r""" & """ + str(input_dict.get("crash_barrier_qty", "N.A.")) + r""" & """ + str(input_dict.get("crash_barrier_vol_total", "N.A.")) + r""" & """ + str(input_dict.get("crash_barrier_wt_single", "N.A.")) + r""" & """ + str(input_dict.get("crash_barrier_wt_total", "N.A.")) + r""" \\
 \hline
 \end{longtable}
-"""
-
-
+""" + _material_charts_tex(input_dict, asset_dir) + "\n"

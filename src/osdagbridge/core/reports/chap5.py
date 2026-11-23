@@ -142,10 +142,15 @@ from osdagbridge.core.utils.common import (
 )
 
 from osdagbridge.core.reports.report_utils import _tex, _render_value, get_girder_entries
+from osdagbridge.core.reports.report_theme import THEME
+from osdagbridge.core.reports.report_charts import (
+    UrRecord, build_ur_charts, to_float,
+    GROUP_GIRDER, GROUP_DECK, GROUP_CB, GROUP_ED,
+)
 
 if TYPE_CHECKING:
     pass
-def ch5_design_checks(checks_data, bridge) -> str:
+def ch5_design_checks(checks_data, bridge, asset_dir=None) -> str:
     """Chapter 5 — Design Checks.
 
     Parameters
@@ -553,6 +558,7 @@ def ch5_design_checks(checks_data, bridge) -> str:
         return (s + " " + unit) if unit and str(unit) not in ("-", "–") else s
 
     g_summary_rows = []
+    _girder_ur = []   # [(girder label, governing UR)] -> Section 5.5 charts
     for _gi, (lbl, _) in enumerate(girder_entries, start=1):
         g_data = _pg_summary.get(f"G{_gi}", {}) or {}
         checks = g_data.get("checks") or []
@@ -576,6 +582,7 @@ def ch5_design_checks(checks_data, bridge) -> str:
         if ctrl_lc is None:
             ctrl_lc = (g_data.get("demand") or {}).get("governing_combination") or ""
 
+        _girder_ur.append((str(lbl), to_float(ctrl.get("dcr"))))
         g_summary_rows.append(
             lbl + r""" & """ + _tex(str(ctrl_lc)) + r""" & """ + _tex(str(ctrl.get("name", "")))
             + r""" & """ + _with_unit(ctrl.get("demand"),   ctrl.get("demand_unit"))
@@ -975,8 +982,31 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         ratio, sf, lim = best
         return ("---", f"{sf:.1f}", f"{lim:.0f}", _ur_522(ratio))
 
+    _ur_records = []   # UrRecord list -> Section 5.5 charts
+
+    def _record_ur(label, ur_cell):
+        ur = to_float(ur_cell)
+        if ur is None:
+            return
+        key = label.lower()
+        if key.startswith("girder"):
+            grp = GROUP_GIRDER
+        elif key.startswith("cross bracing"):
+            grp = GROUP_CB
+        elif key.startswith("end diaphragm"):
+            grp = GROUP_ED
+        else:                                   # deck rows, crack width, slab transverse shear
+            grp = GROUP_DECK
+        short = label.split("---")[-1].strip()
+        short = short.replace("(slab)", "").strip() or label
+        if key.startswith("transverse shear") or key.startswith("crack width"):
+            short = label.replace("(slab)", "").strip()
+        _ur_records.append(UrRecord(grp, short.replace("\\&", "&"), ur))
+
     def _row522(label, cells):
         c = [x if x else "---" for x in cells]
+        if len(cells) >= 4:
+            _record_ur(label, cells[3])
         return label + r" & " + r" & ".join(c) + r" \\[6pt]" + "\n\\hline"
 
     # Deck rows: Demand/Capacity from deck_report_values (KEY_DD_*, the same dict
@@ -1064,6 +1094,25 @@ Fatigue Shear Resistance, $Q_r$ & IRC 22 Table 8 ($\phi d$, $N_{sc}$) & """
         _ed_shear_row,
     ]
     t522_content = "\n".join(_t522)
+
+    # ── Section 5.5 charts (UR = Demand / Capacity) ─────────────────────────
+    ur_charts_tex = ""
+    if asset_dir:
+        _imgs = build_ur_charts(_girder_ur, _ur_records, asset_dir)
+        _w = THEME.chart.latex_width
+        _caps = {
+            "ur_overview": "Governing utilization ratio (UR = Demand / Capacity) of each primary "
+                           "element. The red dashed line marks UR = 1.0; bars above it fail.",
+            "ur_breakdown": "Utilization ratio of every individual check, grouped by element "
+                            "(steel plate girders, concrete deck slab, cross bracing, end diaphragms).",
+        }
+        for _k in ("ur_overview", "ur_breakdown"):
+            if _imgs.get(_k):
+                ur_charts_tex += (
+                    "\\begin{figure}[H]\n\\centering\n"
+                    "\\includegraphics[width=" + _w + "]{" + _imgs[_k] + "}\n"
+                    "\\caption{" + _caps[_k] + "}\n\\end{figure}\n"
+                )
 
     return r"""
 \chapter{Design Checks}
@@ -1408,7 +1457,7 @@ Cross bracing between adjacent plate girders provides lateral stability during c
 
 \vspace{0.4em}
 \noindent
-\setlength{\tabcolsep}{4pt}
+\tableDense
 \setlength\LTleft{0pt}
 \setlength\LTright{\fill}
 
@@ -1452,7 +1501,7 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 
 \vspace{0.4em}
 \noindent
-\setlength{\tabcolsep}{4pt}
+\tableDense
 \setlength{\LTleft}{0pt}
 \setlength{\LTright}{\fill}
 
@@ -1501,5 +1550,7 @@ End diaphragms at the supports transfer transverse loads to the bearings, restra
 \end{longtable}
 \noindent\textit{Note: UR = Demand / Capacity. All values $\leq 1.0$ indicate passing checks. The governing check for each component is highlighted in the individual design check sections above.}
 
+\subsection*{Utilization Ratio Charts}
+""" + ur_charts_tex + r"""
 """
 
