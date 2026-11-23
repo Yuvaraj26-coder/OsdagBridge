@@ -22,7 +22,9 @@ def _tex(value):
                     ('~', r'\textasciitilde{}'), ('^', r'\^{}')]:
         s = s.replace(ch, esc)
     s = s.replace(':', r':\allowbreak{}')
-    return s
+    # Remaining glyphs pdflatex cannot typeset (≤ ≥ ± ° ...): see report_theme.Theme.unicode_fallbacks
+    from osdagbridge.core.reports.report_theme import tex_unicode_fallback
+    return tex_unicode_fallback(s)
 
 
 def _render_value(source_dict, key, unit=""):
